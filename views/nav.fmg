@@ -1,0 +1,11 @@
+{
+  nav{
+    ul{
+      each{function(item)
+        return li{
+          a{href=item.url, item.title}
+        }
+      end, menu},
+    },
+  },
+}

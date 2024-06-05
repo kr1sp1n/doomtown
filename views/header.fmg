@@ -1,0 +1,13 @@
+{
+  div{class="header",
+    picture{
+      source{media="(max-width: 623px)", srcset="img/doomtown_header_002_312px.png"},
+      source{media="(min-width: 624px)", srcset="img/doomtown_header_002_624px.png"},
+      img{class="logo", src="img/doomtown_header_002_624px.png", alt="doomtown.cc"},
+    },
+    header{
+      h1{"Lokales Netzwerk Cottbus"},
+      include{"nav", {menu = menu}},
+    },
+  },
+}
