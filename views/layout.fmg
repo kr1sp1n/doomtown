@@ -1,0 +1,17 @@
+{
+  doctype"html",
+  html{lang="de",
+    head{
+      title"doomtown.cc",
+      link{href="/styles.css", rel="stylesheet"},
+      meta{name="viewport", content="width=device-width, initial-scale=1"},
+    },
+    body{
+      div{class="app",
+        include{"header", {menu = menu}},
+        include{view, {data = data}},
+        include{"footer", {}},
+      },
+    },
+  },
+}

@@ -1,0 +1,12 @@
+{
+  div{class="content",
+    h2{"Dateien"},
+    ul{
+      each{function(file)
+        return li{
+          a{href=file.host..file.path, file.name}
+        }
+      end, data.files},
+    }
+  },
+}
