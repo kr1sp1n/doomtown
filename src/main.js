@@ -1,7 +1,7 @@
 
 function main () {
   let header = `<!DOCTYPE html><html><head>
-    <title>DOOMTOWN - Cottbus</title>
+    <title>doomtown.cc</title>
     <style>
       * {
         margin: 0;
@@ -67,12 +67,12 @@ function main () {
     <picture>
       <source media="(max-width: 623px)" srcset="img/doomtown_header_002_312px.png" />
       <source media="(min-width: 624px)" srcset="img/doomtown_header_002_624px.png" />
-      <img class="logo" src="img/doomtown_header_002_624px.png" alt="DOOMTOWN - cottbus" />
+      <img class="logo" src="img/doomtown_header_002_624px.png" alt="doomtown.cc" />
     </picture>
   </div>`
 
   let content = `<div class="content">
-    <h1>cottbus</h1>
+    <h1>Local Area Network</h1>
     <h2>Testüberschrift</h2>
     <p>LOL WTF ksdhfkjsdhfkjsdkjfhjkshdf kfgkjdfg kjdfg kjdfjksdhfkjsd kjh fkjs hdjkfkjsdhfkjshdjkfhkjsdhfjkshdjkf
     kdfhgjkdfhgjk kdhfg khjkg dfkjg kjd gkjhdf kghdjkfg.
