@@ -3,6 +3,7 @@
 ## install
 
 Install tclsh as runtime.
+Install tcllib.
 
 ## run
 
