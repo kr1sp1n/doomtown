@@ -1,0 +1,14 @@
+[Unit]
+Description=doomtown webserver
+After=network-online.target
+
+[Service]
+ExecStart=/usr/bin/tclsh /home/dietpi/doomtown-cc/src/main.tcl --server 80
+WorkingDirectory=/home/dietpi/doomtown-cc/
+StandardOutput=inherit
+StandardError=inherit
+Restart=always
+User=dietpi
+
+[Install]
+WantedBy=multi-user.target
