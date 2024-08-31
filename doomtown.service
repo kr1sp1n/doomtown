@@ -6,7 +6,7 @@ After=network-online.target
 ExecStart=/usr/bin/tclsh /home/dietpi/doomtown/src/main.tcl \
   --port 80 \
   --db /srv/doomtown/doomtown.sqlite \
-  --files /srv/doomtown/
+  --files /srv/doomtown/files
 WorkingDirectory=/home/dietpi/doomtown/
 StandardOutput=inherit
 StandardError=inherit
