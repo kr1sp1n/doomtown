@@ -31,7 +31,46 @@ package require sha256
 #   }]
 # }
 
-sqlite3 db $script_path/../doomtown.sqlite
+# Default port:
+set port 8080
+
+# Default db file:
+set dbfile $script_path/../doomtown.sqlite
+
+# Default path to files:
+set files_path $script_path/../files
+
+# Parse start arguments:
+set n [llength $argv]
+for {set i 0} {$i<$n} {incr i} {
+  set term [lindex $argv $i]
+  if {[string match --* $term]} {set term [string range $term 1 end]}
+  switch -glob -- $term {
+    -port {
+      incr i;
+      set port [lindex $argv $i]
+    }
+    -db {
+      incr i;
+      set dbfile [lindex $argv $i]
+    }
+    -files {
+      incr i;
+      set files_path [lindex $argv $i]
+    }
+  }
+}
+
+# Setup subdirs in files path:
+set upload_path $files_path/upload
+set static_path $files_path/static
+file mkdir $upload_path
+file mkdir $static_path
+
+# Args for wapp server:
+set wapp_args [list --server $port]
+
+sqlite3 db $dbfile
 # Enable otherwise "ON DELETE CASCADE" will not work:
 db eval "PRAGMA foreign_keys = ON;"
 
@@ -44,7 +83,7 @@ proc setup-db {} {
 }
 
 proc add-file {name type content} {
-  global script_path
+  global upload_path
   set id [uuid::uuid generate]
   set hash [sha2::sha256 $content]
 
@@ -58,14 +97,13 @@ proc add-file {name type content} {
     }
     return
   } else {
-    set upload_path "files/uploaded"
     set file_path "$upload_path/$id"
     set extension [split $name .]
     if { [llength $extension ] > 0 } {
       set extension [lindex $extension end]
     }
     set file_path "$file_path.$extension"
-    set file [open "$script_path/../$file_path" "w"]
+    set file [open $file_path "w"]
     fconfigure $file -translation binary
     puts -nonewline $file $content
     close $file
@@ -129,7 +167,7 @@ proc header {} {
 proc footer {} {
   wapp-trim {
       <div class="footer">
-        <p>Footer</p>
+        <p></p>
       </div>
     </div>
     </body>
@@ -192,9 +230,11 @@ proc wapp-page-upload {} {
     set content [wapp-param file.content {}]
     if {$filename!=""} {
       set file_id [add-file $filename $mimetype $content]
-      # add first part of mimetype as tag otherwise group_concat will not work:
-      add-tag [lindex [split $mimetype '/'] 0] $file_id
-      wapp-redirect "/files/$file_id"
+      if {$file_id!=""} {
+        # add first part of mimetype as tag otherwise group_concat will not work:
+        add-tag [lindex [split $mimetype '/'] 0] $file_id
+        wapp-redirect "/files/$file_id"
+      }
     }
   }
 }
@@ -204,8 +244,7 @@ proc wapp-before-dispatch-hook {} {
 }
 
 proc loadFile {path} {
-  global script_path
-  set file [open "$script_path/../$path" r]
+  set file [open $path r]
   fconfigure $file -translation binary
   set content [read $file]
   close $file
@@ -245,11 +284,10 @@ proc wapp-page-tags {} {
 
 # DELETE file
 proc wapp-page-delete {} {
-  global script_path
   set file_id [wapp-param PATH_TAIL]
   set row [db eval "SELECT id,name,path FROM files WHERE id == '$file_id'"]
   lassign $row id name path
-  file delete -force "$script_path/../$path"
+  file delete -force $path
   db eval "DELETE FROM files WHERE id == '$file_id'"
   wapp-redirect /files
 }
@@ -342,7 +380,7 @@ proc wapp-page-files {} {
 
 proc wapp-default {} {
   layout {
-    wapp-subst {<h2>Hello, World!</h2>}
+    wapp-subst {<h2>Willkommen in Doomtown.</h2>}
   }
 }
 
@@ -623,4 +661,4 @@ proc wapp-page-doomtown_header_002_624px.png {} {
 }
 
 setup-db
-wapp-start $argv
+wapp-start $wapp_args
