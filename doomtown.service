@@ -3,11 +3,11 @@ Description=doomtown webserver
 After=network-online.target
 
 [Service]
-ExecStart=/usr/bin/tclsh /home/dietpi/doomtown-cc/src/main.tcl \
+ExecStart=/usr/bin/tclsh /home/dietpi/doomtown/src/main.tcl \
   --port 80 \
   --db /srv/doomtown/doomtown.sqlite \
   --files /srv/doomtown/
-WorkingDirectory=/home/dietpi/doomtown-cc/
+WorkingDirectory=/home/dietpi/doomtown/
 StandardOutput=inherit
 StandardError=inherit
 Restart=always
