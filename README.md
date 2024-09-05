@@ -1,9 +1,19 @@
-# doomtown.cc
+# doomtown
 
 ## install
 
 ```bash
+git config --local include.path ../.gitconfig
+```
+
+```bash
 apt -y install tcl tcllib libsqlite3-tcl
+```
+
+## push
+
+```bash
+git pushall
 ```
 
 ## run

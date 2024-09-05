@@ -1,0 +1,12 @@
+[remote "gl"]
+  url = git@gitlab.com:kr1sp1n/doomtown.git
+  fetch = +refs/heads/*:refs/remotes/gl/*
+[remote "sh"]
+  url = git@git.sr.ht:~kr1sp1n/doomtown
+  fetch = +refs/heads/*:refs/remotes/sh/*
+[remote "gh"]
+  url = git@github.com:kr1sp1n/doomtown.git
+  fetch = +refs/heads/*:refs/remotes/gh/*
+[remote "dt"]
+  url = git@doomtown.local:/srv/git/doomtown.git
+  fetch = +refs/heads/*:refs/remotes/dt/*
