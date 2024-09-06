@@ -1,6 +1,18 @@
+# API
+
+# GET / => Home
+# GET /files => All files and search file form
+# GET /files/:id => specific file and file tag form
+# GET /upload => upload form
+# POST /upload => upload file
+# GET /tags => all tags and search tag form
+# POST /tags => save tags for file_id
+
+
 set script_path [ file dirname [ file normalize [ info script ] ] ]
 
 source $script_path/wapp.tcl
+source $script_path/utils.tcl
 
 package require uuid
 package require sqlite3
@@ -80,6 +92,12 @@ proc setup-db {} {
   set schema [read $fp]
   close $fp
   db eval $schema
+}
+
+GET /test/lol/wtf {
+  wapp-trim {
+    <h1>LOL WTF</h1>
+  }
 }
 
 proc add-file {name type content} {
