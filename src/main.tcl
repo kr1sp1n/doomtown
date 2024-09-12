@@ -1,14 +1,3 @@
-# API
-
-# GET / => Home
-# GET /files => All files and search file form
-# GET /files/:id => specific file and file tag form
-# GET /upload => upload form
-# POST /upload => upload file
-# GET /tags => all tags and search tag form
-# POST /tags => save tags for file_id
-
-
 set script_path [ file dirname [ file normalize [ info script ] ] ]
 
 source $script_path/wapp.tcl
@@ -94,9 +83,156 @@ proc setup-db {} {
   db eval $schema
 }
 
-GET /test/lol/wtf {
-  wapp-trim {
-    <h1>LOL WTF</h1>
+GET /files {
+  wapp-allow-xorigin-params
+  layout {
+    wapp-subst {<h2>Dateien</h2>}
+    # wapp-subst {<pre>%html([wapp-debug-env])</pre>}
+    set query "SELECT id, name, created_at FROM files"
+    set search [wapp-param search]
+    if {$search != ""} {
+      set query "$query WHERE name LIKE '%$search%'"
+    }
+    # Search form:
+    wapp-trim {
+      <form method="GET">
+        <input type="text" name="search" value="%html($search)"/>
+        <input type="submit" value="Suchen" />
+      </form>
+      <ul>
+    }
+    set query "$query ORDER BY created_at DESC"
+    db eval $query {
+      wapp-trim {
+        <li>%html($created_at) <a href="%url(/files/$id)">%html($name)</a></li>
+      }
+    }
+    wapp-subst {</ul>}
+  }
+}
+
+POST /files/delete {
+  set file_id [wapp-param file_id]
+  set row [db eval "SELECT id,name,path FROM files WHERE id == '$file_id'"]
+  lassign $row id name path
+  file delete -force $path
+  db eval "DELETE FROM files WHERE id == '$file_id'"
+  wapp-redirect /files
+}
+
+GET /files/:id {
+  wapp-allow-xorigin-params
+  layout {
+    set file_id [dict get [wapp-param PATH_PARAMS] id]
+    # if {[string match uploaded/* $file_id]} {
+    #   # Extract file id:
+    #   set file_id [lindex [split [lindex [split $file_id .] end-1] /] end]
+    #   set static 1
+    # }
+
+    # Get file details and will only work if at least 1 tag is present:
+    set row [db eval "
+      SELECT files.id, files.name, files.type, files.path, GROUP_CONCAT(tags.name,' ') AS tags
+      FROM files
+      JOIN files_tags ON files.id = files_tags.file_id 
+      JOIN tags ON tags.id = files_tags.tag_id
+      WHERE files.id == '$file_id'
+      GROUP BY files.id
+      ORDER BY files.id;
+    "]
+    if {[llength $row] == 0} {
+      wapp-subst {<p>File not found.</p>}
+    } else {
+      lassign $row id name type path tags
+      # Response file:
+      # if {$static} {
+      #   wapp-reset
+      #   wapp-mimetype $type
+      #   wapp-unsafe [loadFile $path]
+      #   return
+      # }
+      # Show file details:
+      wapp-subst {<h2>Datei</h2>}
+      show-file-info $name $type
+      wapp-trim {
+        <form method="POST" action="/tags">
+          <input type="hidden" name="file_id" value="%html($file_id)"/>
+          <input type="text" name="tags" value="%html([lsort $tags])"/>
+          <input type="submit" value="Tags speichern" />
+        </form>
+      }
+      wapp-trim {
+        <form method="POST" action="/files/delete">
+          <input type="hidden" name="file_id" value="%html($file_id)"/>
+          <input type="submit" value="Datei löschen" />
+        </form>
+      }
+      if {[string match image/* $type]} {
+        imageAsBase64 $type [loadFile $path]
+      }
+      if {[string match text/* $type]} {
+        set content [loadFile $path]
+        show-text $content
+      }
+      if {[string match audio/* $type]} {
+        show-audio $type $path
+      }
+    }
+  }
+}
+
+GET /tags {
+  layout {
+    wapp-subst {TODO: Show tag list.}
+  }
+}
+
+POST /tags {
+  set file_id [wapp-param file_id]
+  if { $file_id == ""} {
+    layout {
+      wapp-subst {No file_id given.}
+    }
+  } else {
+    set tags [split [wapp-param tags] " "]
+    foreach {tag} $tags {
+      add-tag $tag $file_id
+    }
+    wapp-redirect "/files/$file_id"
+  }
+}
+
+GET /upload {
+  layout {
+    wapp-trim {
+      <h2>Upload</h2>
+      <form method="POST" enctype="multipart/form-data">
+        Datei auswählen: <input type="file" name="file"><br/>
+        <input type="submit" value="Hochladen">
+      </form>
+    }
+  }
+}
+
+POST /upload {
+  # File upload query parameters come in three parts:  The *.mimetype,
+  # the *.filename, and the *.content.
+  set mimetype [wapp-param file.mimetype {}]
+  set filename [wapp-param file.filename {}]
+  set content [wapp-param file.content {}]
+  if {$filename!=""} {
+    set file_id [add-file $filename $mimetype $content]
+    if {$file_id!=""} {
+      # add first part of mimetype as tag otherwise group_concat will not work:
+      add-tag [lindex [split $mimetype '/'] 0] $file_id
+      wapp-redirect "/files/$file_id"
+    }
+  }
+}
+
+proc wapp-default {} {
+  layout {
+    wapp-subst {<h2>Willkommen in Doomtown.</h2>}
   }
 }
 
@@ -221,35 +357,6 @@ proc show-file-info {name type} {
   wapp-subst {<p>Name: %html($name)<br/>Type: %html($type)</p>}
 }
 
-proc wapp-page-upload {} {
-  layout {
-    wapp-trim {
-      <h2>Upload</h2>
-      <form method="POST" enctype="multipart/form-data">
-        Datei auswählen: <input type="file" name="file"><br/>
-        <input type="submit" value="Hochladen">
-      </form>
-    }
-    # File upload query parameters come in three parts:  The *.mimetype,
-    # the *.filename, and the *.content.
-    set mimetype [wapp-param file.mimetype {}]
-    set filename [wapp-param file.filename {}]
-    set content [wapp-param file.content {}]
-    if {$filename!=""} {
-      set file_id [add-file $filename $mimetype $content]
-      if {$file_id!=""} {
-        # add first part of mimetype as tag otherwise group_concat will not work:
-        add-tag [lindex [split $mimetype '/'] 0] $file_id
-        wapp-redirect "/files/$file_id"
-      }
-    }
-  }
-}
-
-proc wapp-before-dispatch-hook {} {
-  # puts [wapp-debug-env]
-}
-
 proc loadFile {path} {
   set file [open $path r]
   fconfigure $file -translation binary
@@ -264,130 +371,6 @@ proc imageAsBase64 {type content} {
     <p>
       <img class="image" src='data:%html($type);base64,%html($b64)'>
     </p>
-  }
-}
-
-proc wapp-page-tags {} {
-  if {[wapp-param REQUEST_METHOD] eq "POST"} {
-    set file_id [wapp-param file_id]
-    if { $file_id == ""} {
-      layout {
-        wapp-subst {No file_id given.}
-      }
-    } else {
-      set tags [split [wapp-param tags] " "]
-      foreach {tag} $tags {
-        add-tag $tag $file_id
-      }
-      wapp-redirect "/files/$file_id"
-    }
-    # wapp-subst {<pre>%html([wapp-debug-env])</pre>}
-  } else {
-    layout {
-      wapp-subst {TODO: Show tag list.}
-    }
-  }
-}
-
-# DELETE file
-proc wapp-page-delete {} {
-  set file_id [wapp-param PATH_TAIL]
-  set row [db eval "SELECT id,name,path FROM files WHERE id == '$file_id'"]
-  lassign $row id name path
-  file delete -force $path
-  db eval "DELETE FROM files WHERE id == '$file_id'"
-  wapp-redirect /files
-}
-
-proc wapp-page-files {} {
-  wapp-allow-xorigin-params
-  layout {
-    # Check if /files/$id:
-    set file_id [wapp-param PATH_TAIL]
-    set static 0
-    if { $file_id eq ""} {
-      # List files:
-      wapp-subst {<h2>Dateien</h2>}
-      # wapp-subst {<pre>%html([wapp-debug-env])</pre>}
-      set query "SELECT id, name, created_at FROM files"
-      set search [wapp-param search]
-      if {$search != ""} {
-        set query "$query WHERE name LIKE '%$search%'"
-      }
-      # Search form:
-      wapp-trim {
-        <form method="GET">
-          <input type="text" name="search" value="%html($search)"/>
-          <input type="submit" value="Suchen" />
-        </form>
-        <ul>
-      }
-      set query "$query ORDER BY created_at DESC"
-      db eval $query {
-        wapp-trim {
-          <li>%html($created_at) <a href="%url(/files/$id)">%html($name)</a></li>
-        }
-      }
-      wapp-subst {</ul>}
-    } else {
-      if {[string match uploaded/* $file_id]} {
-        # Extract file id:
-        set file_id [lindex [split [lindex [split $file_id .] end-1] /] end]
-        set static 1
-      }
-
-      # Get file details and will only work if at least 1 tag is present:
-      set row [db eval "
-        SELECT files.id, files.name, files.type, files.path, GROUP_CONCAT(tags.name,' ') AS tags
-        FROM files
-        JOIN files_tags ON files.id = files_tags.file_id 
-        JOIN tags ON tags.id = files_tags.tag_id
-        WHERE files.id == '$file_id'
-        GROUP BY files.id
-        ORDER BY files.id;
-      "]
-      if {[llength $row] == 0} {
-        wapp-subst {<p>File not found.</p>}
-      } else {
-        lassign $row id name type path tags
-        # Response file:
-        if {$static} {
-          wapp-reset
-          wapp-mimetype $type
-          wapp-unsafe [loadFile $path]
-          return
-        }
-        # Show file details:
-        wapp-subst {<h2>Datei</h2>}
-        show-file-info $name $type
-        wapp-trim {
-          <form method="POST" action="/tags">
-            <input type="hidden" name="file_id" value="%html($file_id)"/>
-            <input type="text" name="tags" value="%html([lsort $tags])"/>
-            <input type="submit" value="Tags speichern" />
-          </form>
-        }
-        wapp-trim {
-          <p><a href="/delete/%url($file_id)">Datei löschen</a></p>
-        }
-        if {[string match image/* $type]} {
-          imageAsBase64 $type [loadFile $path]
-        }
-        if {[string match text/* $type]} {
-          set content [loadFile $path]
-          show-text $content
-        }
-        if {[string match audio/* $type]} {
-          show-audio $type $path
-        }
-      }
-    }
-  }
-}
-
-proc wapp-default {} {
-  layout {
-    wapp-subst {<h2>Willkommen in Doomtown.</h2>}
   }
 }
 
