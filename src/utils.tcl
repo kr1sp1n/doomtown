@@ -25,12 +25,10 @@ proc POST {path code} {
 proc wapp-before-dispatch-hook {} {
   # puts [wapp-debug-env]
   global routes
-  # set procname wapp-page-[wapp-param PATH_HEAD]
   foreach {route} $routes {
     set method [lindex $route 0]
     set path [lindex $route 1]
     if {[wapp-param REQUEST_METHOD] != $method} continue
-
     set notequal 0
     foreach a [split [wapp-param PATH_INFO] /] b [split $path /] {
       if [regexp {:([^:]+)} $b match var] {
@@ -42,7 +40,6 @@ proc wapp-before-dispatch-hook {} {
         }
       }
     }
-    
     if {$notequal eq 1} continue
     wapp-set-param PATH_HEAD "$method-[string map {/ -} $path]"
     break

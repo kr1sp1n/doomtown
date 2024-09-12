@@ -84,8 +84,8 @@ proc setup-db {} {
 }
 
 GET /files {
-  wapp-allow-xorigin-params
   layout {
+    wapp-allow-xorigin-params
     wapp-subst {<h2>Dateien</h2>}
     # wapp-subst {<pre>%html([wapp-debug-env])</pre>}
     set query "SELECT id, name, created_at FROM files"
@@ -99,12 +99,26 @@ GET /files {
         <input type="text" name="search" value="%html($search)"/>
         <input type="submit" value="Suchen" />
       </form>
-      <ul>
     }
+    wapp-subst {<ul>}
     set query "$query ORDER BY created_at DESC"
     db eval $query {
       wapp-trim {
         <li>%html($created_at) <a href="%url(/files/$id)">%html($name)</a></li>
+      }
+    }
+    wapp-subst {</ul>}
+  }
+}
+
+GET /apps {
+  layout {
+    wapp-subst {<h2>Apps</h2>}
+    wapp-subst {<ul>}
+    set query "SELECT id, name, created_at FROM files WHERE type = 'text/html' ORDER BY created_at DESC"
+    db eval $query {
+      wapp-trim {
+        <li>%html($created_at) <a href="%url(/files/raw/$id)" target="_blank">%html($name)</a></li>
       }
     }
     wapp-subst {</ul>}
@@ -120,37 +134,52 @@ POST /files/delete {
   wapp-redirect /files
 }
 
-GET /files/:id {
-  wapp-allow-xorigin-params
+GET /files/raw/:id {
   layout {
+    # TODO: secure with better CSP
+    wapp-content-security-policy off
     set file_id [dict get [wapp-param PATH_PARAMS] id]
-    # if {[string match uploaded/* $file_id]} {
-    #   # Extract file id:
-    #   set file_id [lindex [split [lindex [split $file_id .] end-1] /] end]
-    #   set static 1
-    # }
-
-    # Get file details and will only work if at least 1 tag is present:
-    set row [db eval "
-      SELECT files.id, files.name, files.type, files.path, GROUP_CONCAT(tags.name,' ') AS tags
-      FROM files
-      JOIN files_tags ON files.id = files_tags.file_id 
-      JOIN tags ON tags.id = files_tags.tag_id
-      WHERE files.id == '$file_id'
-      GROUP BY files.id
-      ORDER BY files.id;
-    "]
+    set row [get-file $file_id]
     if {[llength $row] == 0} {
       wapp-subst {<p>File not found.</p>}
+      return
     } else {
       lassign $row id name type path tags
-      # Response file:
-      # if {$static} {
-      #   wapp-reset
-      #   wapp-mimetype $type
-      #   wapp-unsafe [loadFile $path]
-      #   return
-      # }
+      # Response raw file:
+      wapp-reset
+      wapp-mimetype $type
+      wapp-unsafe [loadFile $path]
+    }
+  }
+}
+
+# Save apps:
+POST /files/raw/:id {
+  # puts [wapp-debug-env]
+  set file_id [dict get [wapp-param PATH_PARAMS] id]
+  set row [get-file $file_id]
+  if {[llength $row] == 0} {
+    wapp-subst {<p>File not found.</p>}
+    return
+  } else {
+    lassign $row id name type path tags
+    set content [wapp-param file]
+    if {$content != ""} {
+      update-raw-file $file_id $content
+    }
+  }
+}
+
+GET /files/:id {
+  layout {
+    wapp-allow-xorigin-params
+    set file_id [dict get [wapp-param PATH_PARAMS] id]
+    set row [get-file $file_id]
+    if {[llength $row] == 0} {
+      wapp-subst {<p>File not found.</p>}
+      return
+    } else {
+      lassign $row id name type path tags
       # Show file details:
       wapp-subst {<h2>Datei</h2>}
       show-file-info $name $type
@@ -166,6 +195,11 @@ GET /files/:id {
           <input type="hidden" name="file_id" value="%html($file_id)"/>
           <input type="submit" value="Datei löschen" />
         </form>
+      }
+      wapp-trim {
+        <p>
+          <a href="/files/raw/%html($file_id)" target="_blank">Raw</a>
+        </p>
       }
       if {[string match image/* $type]} {
         imageAsBase64 $type [loadFile $path]
@@ -234,6 +268,35 @@ proc wapp-default {} {
   layout {
     wapp-subst {<h2>Willkommen in Doomtown.</h2>}
   }
+}
+
+proc get-file {file_id} {
+  # Get file details and will only work if at least 1 tag is present:
+  set row [db eval "
+    SELECT files.id, files.name, files.type, files.path, GROUP_CONCAT(tags.name,' ') AS tags
+    FROM files
+    JOIN files_tags ON files.id = files_tags.file_id 
+    JOIN tags ON tags.id = files_tags.tag_id
+    WHERE files.id == '$file_id'
+    GROUP BY files.id
+    ORDER BY files.id;
+  "]
+  return $row
+}
+
+proc update-raw-file {id content} {
+  global upload_path
+  set hash [sha2::sha256 $content]
+  set now [clock seconds]
+  set updated_at [clock format $now -gmt 1 -format "%Y-%m-%dT%H:%M:%SZ"]
+  set row [get-file $id]
+  lassign $row id name type path tags
+  set file [open $path "w"]
+  fconfigure $file -translation binary
+  puts -nonewline $file $content
+  close $file
+  db eval "UPDATE files SET updated_at = '$updated_at', hash = '$hash' WHERE id = '$id';"
+  return $id
 }
 
 proc add-file {name type content} {
@@ -306,6 +369,7 @@ proc header {} {
               <ul>
                 <li><a href="/">Home</a></li>
                 <li><a href="/files">Dateien</a></li>
+                <li><a href="/apps">Apps</a></li>
                 <li><a href="/upload">Upload</a></li>
               </ul>
             </nav>
@@ -464,7 +528,7 @@ proc wapp-page-style.css {} {
     }
 
     .content ul {
-      margin-left: 1em;
+      margin: 1em 0 0 1em;
     }
 
     .content pre {
