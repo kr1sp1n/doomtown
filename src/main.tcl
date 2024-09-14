@@ -1,36 +1,11 @@
-set script_path [ file dirname [ file normalize [ info script ] ] ]
-
-source $script_path/wapp.tcl
-source $script_path/utils.tcl
-
 package require uuid
 package require sqlite3
 package require sha256
 
-# package require Thread
+set script_path [ file dirname [ file normalize [ info script ] ] ]
 
-# TODO: rewrite
-
-# proc wapp-deliver-file-content { wapp chan } {
-#   set mimetype [dict get $wapp .mimetype]
-#   set filepath [dict get $wapp .filepath]
-
-#   thread::detach $chan
-
-#   thread::create [subst -nocommands {
-#     thread::attach $chan
-    
-#     set contentLength [file size $filepath]
-#     set inchan [open $filepath rb]
-#     puts $chan "Content-Type: $mimetype\r"
-#     puts $chan "Content-Length: \$contentLength\r"
-#     puts $chan "\r"
-#     fcopy \$inchan $chan
-#     close \$inchan
-#     flush $chan
-#     close $chan
-#   }]
-# }
+source $script_path/wapp.tcl
+source $script_path/utils.tcl
 
 # Default port:
 set port 8080
@@ -202,7 +177,9 @@ GET /files/:id {
         </p>
       }
       if {[string match image/* $type]} {
-        imageAsBase64 $type [loadFile $path]
+        wapp-subst {<a href="/files/raw/%html($file_id)">}
+          imageAsBase64 $type [loadFile $path]
+        wapp-subst {</a>}
       }
       if {[string match text/* $type]} {
         set content [loadFile $path]
@@ -304,9 +281,6 @@ proc add-file {name type content} {
   set id [uuid::uuid generate]
   set hash [sha2::sha256 $content]
 
-  set now [clock seconds]
-  set created_at [clock format $now -gmt 1 -format "%Y-%m-%dT%H:%M:%SZ"]
-
   set exist [db eval "SELECT id FROM files WHERE hash == '$hash'"]
   if {[string trim $exist] != ""} {
     wapp-trim {
@@ -324,7 +298,7 @@ proc add-file {name type content} {
     fconfigure $file -translation binary
     puts -nonewline $file $content
     close $file
-    db eval "INSERT INTO files (id,name,type,hash,path,created_at,updated_at) VALUES ('$id','$name','$type','$hash','$file_path','$created_at','$created_at')"
+    db eval "INSERT INTO files (id,name,type,hash,path) VALUES ('$id','$name','$type','$hash','$file_path')"
     return $id
   }
 }
@@ -432,9 +406,7 @@ proc loadFile {path} {
 proc imageAsBase64 {type content} {
   set b64 [binary encode base64 $content]
   wapp-trim {
-    <p>
-      <img class="image" src='data:%html($type);base64,%html($b64)'>
-    </p>
+    <img class="image" src='data:%html($type);base64,%html($b64)'>
   }
 }
 
