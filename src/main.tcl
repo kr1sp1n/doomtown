@@ -88,12 +88,15 @@ GET /files {
 
 GET /apps {
   layout {
-    wapp-subst {<h2>Apps</h2>}
+    wapp-subst {<h2>Programme</h2>}
+    wapp-trim {
+      <p>Ein Programm ist eine HTML-Datei. Die Datei kann Javascript und CSS enthalten.</p>
+    }
     wapp-subst {<ul>}
-    set query "SELECT id, name, created_at FROM files WHERE type = 'text/html' ORDER BY created_at DESC"
+    set query "SELECT id, name, created_at FROM files WHERE type = 'text/html' ORDER BY name ASC"
     db eval $query {
       wapp-trim {
-        <li>%html($created_at) <a href="%url(/files/raw/$id)" target="_blank">%html($name)</a></li>
+        <li><a href="%url(/files/raw/$id)" target="_blank">%html($name)</a></li>
       }
     }
     wapp-subst {</ul>}
@@ -194,8 +197,72 @@ GET /files/:id {
 
 GET /tags {
   layout {
-    wapp-subst {TODO: Show tag list.}
+    wapp-subst {<h2>Stichwörter</h2>}
+    set query "SELECT id, name FROM tags"
+    set search [wapp-param search]
+    if {$search != ""} {
+      set query "$query WHERE name LIKE '%$search%'"
+    }
+    # Search form:
+    wapp-trim {
+      <form method="GET">
+        <input type="text" name="search" value="%html($search)"/>
+        <input type="submit" value="Suchen" />
+      </form>
+    }
+    wapp-subst {<ul>}
+    set query "$query ORDER BY name ASC"
+    db eval $query {
+      wapp-trim {
+        <li><a href="%url(/tags/$id)">%html($name)</a></li>
+      }
+    }
+    wapp-subst {</ul>}
   }
+}
+
+GET /tags/:id {
+  layout {
+    set tag_id [dict get [wapp-param PATH_PARAMS] id]
+    set query "
+      SELECT tags.name, files.id, files.name
+      FROM tags
+      JOIN files_tags ON tags.id = files_tags.tag_id 
+      JOIN files ON files.id = files_tags.file_id
+      WHERE tags.id == '$tag_id'
+    "
+    set rows [db eval $query]
+    wapp-trim {
+      <form method="POST" action="/tags/delete">
+        <input type="hidden" name="tag_id" value="%html($tag_id)"/>
+        <input type="submit" value="Stichwort löschen" />
+      </form>
+    }
+    if {[llength $rows] == 0} {
+      wapp-subst {<p>Keine Dateien zu diesem Stichwort gefunden.</p>}
+    } else {
+      set tag_name ""
+      wapp-trim {
+        <h2>Stichwort '%html([lindex $rows 0])'</h2>
+      }
+      wapp-subst {<p>Dateien mit diesem Stichwort:</p>}
+      wapp-subst {<ul>}
+      foreach {tag_name file_id file_name} $rows {
+        wapp-trim {
+          <li><a href="%url(/files/$file_id)">%html($file_name)</a></li>
+        }
+      }
+      wapp-subst {</ul>}
+    }
+  }
+}
+
+POST /tags/delete {
+  set tag_id [wapp-param tag_id]
+  set row [db eval "SELECT id,name FROM tags WHERE id == '$tag_id'"]
+  lassign $row id name
+  db eval "DELETE FROM tags WHERE id == '$tag_id'"
+  wapp-redirect /tags
 }
 
 POST /tags {
@@ -341,9 +408,10 @@ proc header {} {
             <h1>Lokales Netzwerk Cottbus</h1>
             <nav>
               <ul>
-                <li><a href="/">Home</a></li>
+                <li><a href="/">Index</a></li>
                 <li><a href="/files">Dateien</a></li>
-                <li><a href="/apps">Apps</a></li>
+                <li><a href="/apps">Programme</a></li>
+                <li><a href="/tags">Stichwörter</a></li>
                 <li><a href="/upload">Upload</a></li>
               </ul>
             </nav>
