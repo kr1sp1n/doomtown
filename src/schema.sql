@@ -3,6 +3,8 @@ BEGIN TRANSACTION;
 CREATE TABLE IF NOT EXISTS "files" (
   "id" TEXT NOT NULL PRIMARY KEY,
   "name" TEXT NOT NULL,
+  "title" TEXT,
+  "description" TEXT,
   "host" TEXT NOT NULL DEFAULT 'http://localhost:8080',
   "path" TEXT NOT NULL,
   "hash" TEXT NOT NULL UNIQUE,

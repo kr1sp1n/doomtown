@@ -16,6 +16,9 @@ set dbfile $script_path/../doomtown.sqlite
 # Default path to files:
 set files_path $script_path/../files
 
+# Default admin key:
+set admin_key ""
+
 # Parse start arguments:
 set n [llength $argv]
 for {set i 0} {$i<$n} {incr i} {
@@ -34,7 +37,15 @@ for {set i 0} {$i<$n} {incr i} {
       incr i;
       set files_path [lindex $argv $i]
     }
+    -admin {
+      incr i;
+      set admin_key [lindex $argv $i]
+    }
   }
+}
+
+if {$admin_key eq ""} {
+  puts "WARNING: No admin key set."
 }
 
 # Setup subdirs in files path:
@@ -62,7 +73,6 @@ GET /files {
   layout {
     wapp-allow-xorigin-params
     wapp-subst {<h2>Dateien</h2>}
-    # wapp-subst {<pre>%html([wapp-debug-env])</pre>}
     set query "SELECT id, name, created_at FROM files"
     set search [wapp-param search]
     if {$search != ""} {
@@ -93,14 +103,33 @@ GET /apps {
       <p>Ein Programm ist eine HTML-Datei. Die Datei kann Javascript und CSS enthalten.</p>
     }
     wapp-subst {<ul>}
-    set query "SELECT id, name, created_at FROM files WHERE type = 'text/html' ORDER BY name ASC"
+    set query "SELECT id, name, title, description FROM files WHERE type = 'text/html' ORDER BY name ASC"
     db eval $query {
+      set display $name
+      if {$title != ""} {
+        set display $title
+      }
+      if {$description != ""} {
+        set description " - $description"
+      }
       wapp-trim {
-        <li><a href="%url(/files/raw/$id)" target="_blank">%html($name)</a></li>
+        <li><a href="%url(/files/raw/$id)" target="_blank">%html($display)</a>%html($description)</li>
       }
     }
     wapp-subst {</ul>}
   }
+}
+
+POST /files/update {
+  set file_id [wapp-param file_id]
+  set title [wapp-param title]
+  set description [wapp-param description]
+  set row [db eval "UPDATE files SET title = '$title', description = '$description' WHERE id = '$file_id'"]
+  puts $row
+  # lassign $row id name path
+  # file delete -force $path
+  # db eval "DELETE FROM files WHERE id == '$file_id'"
+  wapp-redirect /files/$file_id
 }
 
 POST /files/delete {
@@ -122,7 +151,7 @@ GET /files/raw/:id {
       wapp-subst {<p>File not found.</p>}
       return
     } else {
-      lassign $row id name type path tags
+      lassign $row id name title description type path tags
       # Response raw file:
       wapp-reset
       wapp-mimetype $type
@@ -133,14 +162,13 @@ GET /files/raw/:id {
 
 # Save apps:
 POST /files/raw/:id {
-  # puts [wapp-debug-env]
   set file_id [dict get [wapp-param PATH_PARAMS] id]
   set row [get-file $file_id]
   if {[llength $row] == 0} {
     wapp-subst {<p>File not found.</p>}
     return
   } else {
-    lassign $row id name type path tags
+    lassign $row id name title description type path tags
     set content [wapp-param file]
     if {$content != ""} {
       update-raw-file $file_id $content
@@ -154,29 +182,52 @@ GET /files/:id {
     set file_id [dict get [wapp-param PATH_PARAMS] id]
     set row [get-file $file_id]
     if {[llength $row] == 0} {
-      wapp-subst {<p>File not found.</p>}
+      wapp-subst {<p>Datei nicht gefunden.</p>}
       return
     } else {
-      lassign $row id name type path tags
+      lassign $row id name title description type path tags
       # Show file details:
       wapp-subst {<h2>Datei</h2>}
-      show-file-info $name $type
+      wapp-trim {
+        <form method="POST" action="/files/update">
+          <input type="hidden" name="file_id" value="%html($file_id)"/>
+          <p>
+            Name: %html($name)<br/>
+            Typ: %html($type)<br/><br/>
+            Titel:<br/>
+            <input name="title" type="text" value="%html($title)"/><br/>
+            Beschreibung:<br/>
+            <textarea name="description">%html($description)</textarea><br/><br/>
+            <input type="submit" value="Speichern" />
+          </p>
+        </form>
+      }
+      wapp-subst {<p>Stichwörter:&nbsp;}
+      foreach {tag} [split [lsort $tags] " "] {
+        wapp-trim {
+          <a href="">%html($tag)</a>&nbsp;
+        }
+      }
+      wapp-subst {</p>}
       wapp-trim {
         <form method="POST" action="/tags">
           <input type="hidden" name="file_id" value="%html($file_id)"/>
-          <input type="text" name="tags" value="%html([lsort $tags])"/>
-          <input type="submit" value="Tags speichern" />
+          <input type="text" name="tags" value=""/>
+          <input type="submit" value="Stichwörter hinzufügen" />
+          <p>Es können mehrere Stichwörter durch Leerzeichen getrennt eingegeben werden.</p>
         </form>
       }
-      wapp-trim {
-        <form method="POST" action="/files/delete">
-          <input type="hidden" name="file_id" value="%html($file_id)"/>
-          <input type="submit" value="Datei löschen" />
-        </form>
+      if {[is_admin]} {
+        wapp-trim {
+          <form method="POST" action="/files/delete">
+            <input type="hidden" name="file_id" value="%html($file_id)"/>
+            <input class="red" type="submit" value="Datei löschen" />
+          </form>
+        }
       }
       wapp-trim {
         <p>
-          <a href="/files/raw/%html($file_id)" target="_blank">Raw</a>
+          <a href="/files/raw/%html($file_id)" target="_blank">Datei anschauen</a>
         </p>
       }
       if {[string match image/* $type]} {
@@ -221,9 +272,26 @@ GET /tags {
   }
 }
 
+proc is_admin {} {
+  global admin_key
+  # puts [wapp-debug-env]
+  return [expr {$admin_key eq [wapp-param admin]}]
+}
+
 GET /tags/:id {
   layout {
+    wapp-allow-xorigin-params
     set tag_id [dict get [wapp-param PATH_PARAMS] id]
+
+    if {[is_admin]} {
+      wapp-trim {
+        <form method="POST" action="/tags/delete">
+          <input type="hidden" name="tag_id" value="%html($tag_id)"/>
+          <input type="submit" class="red" value="Stichwort löschen" />
+        </form>
+      }
+    }
+
     set query "
       SELECT tags.name, files.id, files.name
       FROM tags
@@ -232,12 +300,6 @@ GET /tags/:id {
       WHERE tags.id == '$tag_id'
     "
     set rows [db eval $query]
-    wapp-trim {
-      <form method="POST" action="/tags/delete">
-        <input type="hidden" name="tag_id" value="%html($tag_id)"/>
-        <input type="submit" value="Stichwort löschen" />
-      </form>
-    }
     if {[llength $rows] == 0} {
       wapp-subst {<p>Keine Dateien zu diesem Stichwort gefunden.</p>}
     } else {
@@ -285,8 +347,12 @@ GET /upload {
     wapp-trim {
       <h2>Upload</h2>
       <form method="POST" enctype="multipart/form-data">
-        Datei auswählen: <input type="file" name="file"><br/>
-        <input type="submit" value="Hochladen">
+        <p>
+          Datei auswählen: <input type="file" name="file" />
+        </p>
+        <p>
+          <input type="submit" value="Hochladen" />
+        </p>
       </form>
     }
   }
@@ -310,14 +376,23 @@ POST /upload {
 
 proc wapp-default {} {
   layout {
-    wapp-subst {<h2>Willkommen in Doomtown.</h2>}
+    wapp-trim {
+      <h2>Willkommen in Doomtown</h2>
+      <p>
+        Dies ist ein lokales Netzwerk, ohne Verbindung zum Internet.
+        Es wird nur über einen mobilen WLAN-Router bereitgestellt.
+        Der Router taucht ab und zu einfach so in der Stadt auf.
+        Du kannst anonym Dateien hochladen und sie bleiben für die Nachwelt erhalten.
+        Schreibe Texte, lade Bilder hoch oder suche nach Dateien von anderen Menschen.
+      </p>
+    }
   }
 }
 
 proc get-file {file_id} {
   # Get file details and will only work if at least 1 tag is present:
   set row [db eval "
-    SELECT files.id, files.name, files.type, files.path, GROUP_CONCAT(tags.name,' ') AS tags
+    SELECT files.id, files.name, files.title, files.description, files.type, files.path, GROUP_CONCAT(tags.name,' ') AS tags
     FROM files
     JOIN files_tags ON files.id = files_tags.file_id 
     JOIN tags ON tags.id = files_tags.tag_id
@@ -334,7 +409,7 @@ proc update-raw-file {id content} {
   set now [clock seconds]
   set updated_at [clock format $now -gmt 1 -format "%Y-%m-%dT%H:%M:%SZ"]
   set row [get-file $id]
-  lassign $row id name type path tags
+  lassign $row id name title description type path tags
   set file [open $path "w"]
   fconfigure $file -translation binary
   puts -nonewline $file $content
@@ -423,7 +498,10 @@ proc header {} {
 proc footer {} {
   wapp-trim {
       <div class="footer">
-        <p></p>
+        <p class="small">
+          Der Administrator behält sich das Recht vor Inhalte zu löschen, 
+          die diskriminierend, rassistisch oder jugendgefährdend sind.
+        </p>
       </div>
     </div>
     </body>
@@ -459,10 +537,6 @@ proc show-audio {type path} {
   }
 }
 
-proc show-file-info {name type} {
-  wapp-subst {<p>Name: %html($name)<br/>Type: %html($type)</p>}
-}
-
 proc loadFile {path} {
   set file [open $path r]
   fconfigure $file -translation binary
@@ -481,7 +555,7 @@ proc imageAsBase64 {type content} {
 proc wapp-page-style.css {} {
   wapp-mimetype text/css
   wapp-cache-control max-age=3600
-  wapp-trim {
+  wapp-unsafe {
     * {
       margin: 0;
       padding: 0;
@@ -491,6 +565,28 @@ proc wapp-page-style.css {} {
       background: #999;
       font-family: monospace, courier;
       font-size: 1em;
+    }
+
+    .small {
+      font-size: 0.6em;
+    }
+
+    input[type=button], input[type=submit], input[type=reset], input[type=reset], button {
+      padding: 0.5em 1em;
+      background-color: #009966;
+      border: 1px solid #666;
+      color: white;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    input[type=text] {
+      line-height: 2em;
+      padding-left: 0.2em;
+    }
+
+    input[type=submit].red {
+      background-color: #f00;
     }
 
     .app {
@@ -525,8 +621,8 @@ proc wapp-page-style.css {} {
       max-width: 600px;
     }
 
-    .footer p {
-      padding: 1em;
+    .footer {
+      padding: 2em 1em 1em 1em;
     }
 
     h1 {
@@ -577,7 +673,7 @@ proc wapp-page-style.css {} {
     }
 
     .content .image {
-      width: 100%;
+      width: 50%;
     }
   }
 }
