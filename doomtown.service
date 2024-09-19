@@ -7,12 +7,13 @@ ExecStart=/usr/bin/tclsh /home/dietpi/doomtown/src/main.tcl \
   --port 80 \
   --db /srv/doomtown/doomtown.sqlite \
   --files /srv/doomtown/files \
-  --admin $DOOMTOWN_ADMIN
+  --admin $ADMIN_KEY
 WorkingDirectory=/home/dietpi/doomtown/
 StandardOutput=inherit
 StandardError=inherit
 Restart=always
 User=dietpi
+EnvironmentFile=/home/dietpi/doomtown/local.conf
 
 [Install]
 WantedBy=multi-user.target

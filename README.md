@@ -26,6 +26,7 @@ tclsh ./src/main.tcl --server 8080
 
 ```bash
 sudo cp ./doomtown.service /lib/systemd/system/
+cp ./example.conf ./local.conf
 sudo systemctl enable doomtown
 # Allow to run on port 80:
 sudo echo 'net.ipv4.ip_unprivileged_port_start=0' > /etc/sysctl.d/50-unprivileged-ports.conf

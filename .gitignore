@@ -1,3 +1,4 @@
 files
 *.sqlite
 .DS_Store
+local.conf
