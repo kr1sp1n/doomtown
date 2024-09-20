@@ -44,3 +44,9 @@ sudo systemctl start doomtown
 ```bash
 sudo journalctl -u doomtown
 ```
+
+## copy data
+
+```bash
+rsync -avzh root@doomtown.local:/srv/doomtown/ /tmp/doomtown
+```
