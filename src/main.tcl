@@ -247,7 +247,7 @@ GET /files/:id {
         show-text $content
       }
       if {[string match audio/* $type]} {
-        show-audio $type $path
+        show-audio $type /files/raw/$file_id
       }
     }
   }
@@ -539,7 +539,7 @@ proc show-text {content} {
 proc show-audio {type path} {
   wapp-trim {
     <audio controls>
-      <source src="/%url($path)" type="%html($type)">
+      <source src="%url($path)" type="%html($type)">
       Your browser does not support the audio element.
     </audio>
   }
