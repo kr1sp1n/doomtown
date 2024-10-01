@@ -69,6 +69,15 @@ proc setup-db {} {
   db eval $schema
 }
 
+GET /contact {
+  layout {
+    wapp-subst {<h2>Kontakt</h2>}
+    wapp-trim {
+      <p>Krispin <a href="mailto:krispin@posteo.de">krispin@posteo.de</a></p>
+    }
+  }
+}
+
 GET /files {
   layout {
     wapp-allow-xorigin-params
@@ -142,21 +151,19 @@ POST /files/delete {
 }
 
 GET /files/raw/:id {
-  layout {
-    # TODO: secure with better CSP
-    wapp-content-security-policy off
-    set file_id [dict get [wapp-param PATH_PARAMS] id]
-    set row [get-file $file_id]
-    if {[llength $row] == 0} {
-      wapp-subst {<p>File not found.</p>}
-      return
-    } else {
-      lassign $row id name title description type path tags
-      # Response raw file:
-      wapp-reset
-      wapp-mimetype $type
-      wapp-unsafe [loadFile $path]
-    }
+  # TODO: secure with better CSP
+  wapp-content-security-policy off
+  set file_id [dict get [wapp-param PATH_PARAMS] id]
+  set row [get-file $file_id]
+  if {[llength $row] == 0} {
+    wapp-subst {<p>File not found.</p>}
+    return
+  } else {
+    lassign $row id name title description type path tags
+    # Response raw file:
+    wapp-reset
+    wapp-mimetype $type
+    wapp-unsafe [loadFile $path]
   }
 }
 
@@ -488,6 +495,7 @@ proc header {} {
                 <li><a href="/apps">Programme</a></li>
                 <li><a href="/tags">Stichwörter</a></li>
                 <li><a href="/upload">Upload</a></li>
+                <li><a href="/contact">Kontakt</a></li>
               </ul>
             </nav>
           </header>
@@ -499,7 +507,7 @@ proc footer {} {
   wapp-trim {
       <div class="footer">
         <p class="small">
-          Der Administrator behält sich das Recht vor Inhalte zu löschen, 
+          Wir behalten uns das Recht vor, Inhalte zu löschen, 
           die diskriminierend, rassistisch oder jugendgefährdend sind.
         </p>
       </div>
