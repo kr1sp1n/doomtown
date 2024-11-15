@@ -163,7 +163,11 @@ GET /files/raw/:id {
     # Response raw file:
     wapp-reset
     wapp-mimetype $type
-    wapp-unsafe [loadFile $path]
+    if [string match "text/*" $type] {
+      wapp-unsafe [loadTextFile $path]
+    } else {
+      wapp-unsafe [loadBinaryFile $path]
+    }
   }
 }
 
@@ -239,11 +243,11 @@ GET /files/:id {
       }
       if {[string match image/* $type]} {
         wapp-subst {<a href="/files/raw/%html($file_id)">}
-          imageAsBase64 $type [loadFile $path]
+          imageAsBase64 $type [loadBinaryFile $path]
         wapp-subst {</a>}
       }
       if {[string match text/* $type]} {
-        set content [loadFile $path]
+        set content [loadTextFile $path]
         show-text $content
       }
       if {[string match audio/* $type]} {
@@ -545,7 +549,14 @@ proc show-audio {type path} {
   }
 }
 
-proc loadFile {path} {
+proc loadTextFile {path} {
+  set file [open $path r]
+  set content [read $file]
+  close $file
+  return $content
+}
+
+proc loadBinaryFile {path} {
   set file [open $path r]
   fconfigure $file -translation binary
   set content [read $file]
