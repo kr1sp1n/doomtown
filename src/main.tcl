@@ -162,7 +162,7 @@ GET /files/raw/:id {
     lassign $row id name title description type path tags
     # Response raw file:
     wapp-reset
-    wapp-mimetype $type
+    wapp-mimetype "$type; charset=UTF-8"
     if [string match "text/*" $type] {
       wapp-unsafe [loadTextFile $path]
     } else {
@@ -199,6 +199,18 @@ GET /files/:id {
       lassign $row id name title description type path tags
       # Show file details:
       wapp-subst {<h2>Datei</h2>}
+      if {[string match image/* $type]} {
+        wapp-subst {<a href="/files/raw/%html($file_id)">}
+          imageAsBase64 $type [loadBinaryFile $path]
+        wapp-subst {</a>}
+      }
+      if {[string match text/* $type]} {
+        set content [loadTextFile $path]
+        show-text $content
+      }
+      if {[string match audio/* $type]} {
+        show-audio $type /files/raw/$file_id
+      }
       wapp-trim {
         <form method="POST" action="/files/update">
           <input type="hidden" name="file_id" value="%html($file_id)"/>
@@ -240,18 +252,6 @@ GET /files/:id {
         <p>
           <a href="/files/raw/%html($file_id)" target="_blank">Datei anschauen</a>
         </p>
-      }
-      if {[string match image/* $type]} {
-        wapp-subst {<a href="/files/raw/%html($file_id)">}
-          imageAsBase64 $type [loadBinaryFile $path]
-        wapp-subst {</a>}
-      }
-      if {[string match text/* $type]} {
-        set content [loadTextFile $path]
-        show-text $content
-      }
-      if {[string match audio/* $type]} {
-        show-audio $type /files/raw/$file_id
       }
     }
   }
@@ -510,10 +510,7 @@ proc header {} {
 proc footer {} {
   wapp-trim {
       <div class="footer">
-        <p class="small">
-          Wir behalten uns das Recht vor, Inhalte zu löschen, 
-          die diskriminierend, rassistisch oder jugendgefährdend sind.
-        </p>
+        <p class="small"></p>
       </div>
     </div>
     </body>
@@ -534,7 +531,7 @@ proc show-text {content} {
   wapp-trim {
     <p>
       <pre>
-        %html([encoding convertfrom utf-8 $content])
+        %html($content)
       </pre>
     </p>
   }
