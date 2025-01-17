@@ -19,7 +19,7 @@ git pushall
 ## run
 
 ```bash
-tclsh ./src/main.tcl --server 8080
+tclsh ./src/main.tcl --port 8080
 ```
 
 ## setup service

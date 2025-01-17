@@ -1,0 +1,13 @@
+services:
+  web:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - ADMIN_KEY=test1234
+      - DB=/doomtown.sqlite
+      - FILES=/files
+    volumes:
+      - $PWD/files:/files
+      - $PWD/doomtown.sqlite:/doomtown.sqlite

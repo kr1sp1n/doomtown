@@ -21,6 +21,10 @@ proc POST {path code} {
   setup-route POST $path $code
 }
 
+proc HEAD {path code} {
+  setup-route HEAD $path $code
+}
+
 # Handle defined routes:
 proc wapp-before-dispatch-hook {} {
   # puts [wapp-debug-env]

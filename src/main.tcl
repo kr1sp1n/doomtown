@@ -10,11 +10,13 @@ source $script_path/utils.tcl
 # Default port:
 set port 8080
 
+set base_url "http://localhost:$port"
+
 # Default db file:
 set dbfile $script_path/../doomtown.sqlite
 
 # Default path to files:
-set files_path $script_path/../files
+set files_path [file normalize $script_path/../files]
 
 # Default admin key:
 set admin_key ""
@@ -37,7 +39,7 @@ for {set i 0} {$i<$n} {incr i} {
       incr i;
       set files_path [lindex $argv $i]
     }
-    -admin {
+    -admin_key {
       incr i;
       set admin_key [lindex $argv $i]
     }
@@ -82,7 +84,7 @@ GET /files {
   layout {
     wapp-allow-xorigin-params
     wapp-subst {<h2>Dateien</h2>}
-    set query "SELECT id, name, created_at FROM files"
+    set query "SELECT hash, name, created_at FROM files"
     set search [wapp-param search]
     if {$search != ""} {
       set query "$query WHERE name LIKE '%$search%'"
@@ -98,7 +100,7 @@ GET /files {
     set query "$query ORDER BY created_at DESC"
     db eval $query {
       wapp-trim {
-        <li>%html($created_at) <a href="%url(/files/$id)">%html($name)</a></li>
+        <li>%html($created_at) <a href="%url(/files/$hash)">%html($name)</a></li>
       }
     }
     wapp-subst {</ul>}
@@ -112,7 +114,7 @@ GET /apps {
       <p>Ein Programm ist eine HTML-Datei. Die Datei kann Javascript und CSS enthalten.</p>
     }
     wapp-subst {<ul>}
-    set query "SELECT id, name, title, description FROM files WHERE type = 'text/html' ORDER BY name ASC"
+    set query "SELECT hash, name, title, description FROM files WHERE type = 'text/html' ORDER BY name ASC"
     db eval $query {
       set display $name
       if {$title != ""} {
@@ -122,7 +124,7 @@ GET /apps {
         set description " - $description"
       }
       wapp-trim {
-        <li><a href="%url(/files/raw/$id)" target="_blank">%html($display)</a>%html($description)</li>
+        <li><a href="%url(/files/raw/$hash)" target="_blank">%html($display)</a>%html($description)</li>
       }
     }
     wapp-subst {</ul>}
@@ -130,36 +132,35 @@ GET /apps {
 }
 
 POST /files/update {
-  set file_id [wapp-param file_id]
+  set file_hash [wapp-param file_hash]
   set title [wapp-param title]
   set description [wapp-param description]
-  set row [db eval "UPDATE files SET title = '$title', description = '$description' WHERE id = '$file_id'"]
-  puts $row
-  # lassign $row id name path
-  # file delete -force $path
-  # db eval "DELETE FROM files WHERE id == '$file_id'"
-  wapp-redirect /files/$file_id
+  set row [db eval "UPDATE files SET title = '$title', description = '$description' WHERE hash = '$file_hash'"]
+  # puts $row
+  wapp-redirect /files/$file_hash
 }
 
 POST /files/delete {
-  set file_id [wapp-param file_id]
-  set row [db eval "SELECT id,name,path FROM files WHERE id == '$file_id'"]
-  lassign $row id name path
+  set file_hash [wapp-param file_hash]
+  set row [db eval "SELECT hash, extension FROM files WHERE hash == '$file_hash'"]
+  lassign $row hash extension
+  set path [get_file_path $hash $extension]
   file delete -force $path
-  db eval "DELETE FROM files WHERE id == '$file_id'"
+  db eval "DELETE FROM files WHERE hash == '$hash'"
   wapp-redirect /files
 }
 
-GET /files/raw/:id {
+GET /files/raw/:hash {
   # TODO: secure with better CSP
   wapp-content-security-policy off
-  set file_id [dict get [wapp-param PATH_PARAMS] id]
-  set row [get-file $file_id]
+  set file_hash [dict get [wapp-param PATH_PARAMS] hash]
+  set row [get-file $file_hash]
   if {[llength $row] == 0} {
     wapp-subst {<p>File not found.</p>}
     return
   } else {
-    lassign $row id name title description type path tags
+    lassign $row hash name title description type extension tags
+    set path [get_file_path $hash $extension]
     # Response raw file:
     wapp-reset
     wapp-mimetype "$type; charset=UTF-8"
@@ -172,35 +173,36 @@ GET /files/raw/:id {
 }
 
 # Save apps:
-POST /files/raw/:id {
-  set file_id [dict get [wapp-param PATH_PARAMS] id]
-  set row [get-file $file_id]
+POST /files/raw/:hash {
+  set file_hash [dict get [wapp-param PATH_PARAMS] hash]
+  set row [get-file $file_hash]
   if {[llength $row] == 0} {
     wapp-subst {<p>File not found.</p>}
     return
   } else {
-    lassign $row id name title description type path tags
+    lassign $row hash name title description type extension tags
     set content [wapp-param file]
     if {$content != ""} {
-      update-raw-file $file_id $content
+      update-raw-file $file_hash $content
     }
   }
 }
 
-GET /files/:id {
+GET /files/:hash {
   layout {
     wapp-allow-xorigin-params
-    set file_id [dict get [wapp-param PATH_PARAMS] id]
-    set row [get-file $file_id]
+    set file_hash [dict get [wapp-param PATH_PARAMS] hash]
+    set row [get-file $file_hash]
     if {[llength $row] == 0} {
       wapp-subst {<p>Datei nicht gefunden.</p>}
       return
     } else {
-      lassign $row id name title description type path tags
+      lassign $row hash name title description type extension tags
+      set path [get_file_path $hash $extension]
       # Show file details:
       wapp-subst {<h2>Datei</h2>}
       if {[string match image/* $type]} {
-        wapp-subst {<a href="/files/raw/%html($file_id)">}
+        wapp-subst {<a href="/files/raw/%html($file_hash)">}
           imageAsBase64 $type [loadBinaryFile $path]
         wapp-subst {</a>}
       }
@@ -209,11 +211,11 @@ GET /files/:id {
         show-text $content
       }
       if {[string match audio/* $type]} {
-        show-audio $type /files/raw/$file_id
+        show-audio $type /files/raw/$file_hash
       }
       wapp-trim {
         <form method="POST" action="/files/update">
-          <input type="hidden" name="file_id" value="%html($file_id)"/>
+          <input type="hidden" name="file_hash" value="%html($file_hash)"/>
           <p>
             Name: %html($name)<br/>
             Typ: %html($type)<br/><br/>
@@ -234,7 +236,7 @@ GET /files/:id {
       wapp-subst {</p>}
       wapp-trim {
         <form method="POST" action="/tags">
-          <input type="hidden" name="file_id" value="%html($file_id)"/>
+          <input type="hidden" name="file_hash" value="%html($file_hash)"/>
           <input type="text" name="tags" value=""/>
           <input type="submit" value="Stichwörter hinzufügen" />
           <p>Es können mehrere Stichwörter durch Leerzeichen getrennt eingegeben werden.</p>
@@ -243,14 +245,14 @@ GET /files/:id {
       if {[is_admin]} {
         wapp-trim {
           <form method="POST" action="/files/delete">
-            <input type="hidden" name="file_id" value="%html($file_id)"/>
+            <input type="hidden" name="file_hash" value="%html($file_hash)"/>
             <input class="red" type="submit" value="Datei löschen" />
           </form>
         }
       }
       wapp-trim {
         <p>
-          <a href="/files/raw/%html($file_id)" target="_blank">Datei anschauen</a>
+          <a href="/files/raw/%html($file_hash)" target="_blank">Datei anschauen</a>
         </p>
       }
     }
@@ -286,7 +288,12 @@ GET /tags {
 proc is_admin {} {
   global admin_key
   # puts [wapp-debug-env]
-  return [expr {$admin_key eq [wapp-param admin]}]
+  return [expr {$admin_key eq [wapp-param admin_key]}]
+}
+
+proc get_file_path {file_hash file_extension} {
+  global upload_path
+  return $upload_path/$file_hash.$file_extension
 }
 
 GET /tags/:id {
@@ -304,10 +311,10 @@ GET /tags/:id {
     }
 
     set query "
-      SELECT tags.name, files.id, files.name
+      SELECT tags.name, files.hash, files.name
       FROM tags
       JOIN files_tags ON tags.id = files_tags.tag_id 
-      JOIN files ON files.id = files_tags.file_id
+      JOIN files ON files.hash = files_tags.file_hash
       WHERE tags.id == '$tag_id'
     "
     set rows [db eval $query]
@@ -320,9 +327,9 @@ GET /tags/:id {
       }
       wapp-subst {<p>Dateien mit diesem Stichwort:</p>}
       wapp-subst {<ul>}
-      foreach {tag_name file_id file_name} $rows {
+      foreach {tag_name file_hash file_name} $rows {
         wapp-trim {
-          <li><a href="%url(/files/$file_id)">%html($file_name)</a></li>
+          <li><a href="%url(/files/$file_hash)">%html($file_name)</a></li>
         }
       }
       wapp-subst {</ul>}
@@ -339,17 +346,17 @@ POST /tags/delete {
 }
 
 POST /tags {
-  set file_id [wapp-param file_id]
-  if { $file_id == ""} {
+  set file_hash [wapp-param file_hash]
+  if { $file_hash == ""} {
     layout {
-      wapp-subst {No file_id given.}
+      wapp-subst {No file_hash given.}
     }
   } else {
     set tags [split [wapp-param tags] " "]
     foreach {tag} $tags {
-      add-tag $tag $file_id
+      add-tag $tag $file_hash
     }
-    wapp-redirect "/files/$file_id"
+    wapp-redirect "/files/$file_hash"
   }
 }
 
@@ -376,13 +383,60 @@ POST /upload {
   set filename [wapp-param file.filename {}]
   set content [wapp-param file.content {}]
   if {$filename!=""} {
-    set file_id [add-file $filename $mimetype $content]
-    if {$file_id!=""} {
+    set hash [add-file $filename $mimetype $content]
+    if {$hash!=""} {
       # add first part of mimetype as tag otherwise group_concat will not work:
-      add-tag [lindex [split $mimetype '/'] 0] $file_id
-      wapp-redirect "/files/$file_id"
+      add-tag [lindex [split $mimetype '/'] 0] $hash
+      wapp-redirect "/files/$hash"
     }
   }
+}
+
+HEAD /rss {
+  wapp-reset
+  wapp-mimetype "text/xml; charset=utf-8"
+}
+
+GET /rss {
+  global base_url
+  set query "SELECT hash, name, title, extension, type, description, created_at FROM files ORDER BY created_at DESC LIMIT 10"
+  wapp-reset
+  wapp-mimetype "text/xml; charset=utf-8"
+  wapp-trim {
+    <?xml version="1.0" encoding="utf-8"?>
+    <rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/" xmlns:atom="http://www.w3.org/2005/Atom">
+      <channel>
+        <title>doomtown cottbus</title>
+        <description>Neue Dateien als RSS-Feed</description>
+        <link>%url($base_url)</link>
+        <lastBuildDate>Mon, 6 Sep 2010 00:01:00 +0000</lastBuildDate>
+        <pubDate>Sun, 6 Sep 2009 16:20:00 +0000</pubDate>
+        <ttl>1800</ttl>
+  }
+  db eval $query {
+    set item_title $title
+    set item_description $description
+    if { $item_title == ""} {
+      set item_title $name
+    }
+    if { $item_description == "" && [string match text/plain $type]} {
+      set path [get_file_path $hash $extension]
+      set item_description [loadTextFile $path]
+    }
+
+    wapp-trim {
+      <item>
+        <title>%html($item_title)</title>
+        <description><!\[CDATA\[%html($item_description)\]\]></description>
+        <link>%url($base_url)%url(/files/$hash)</link>
+        <guid>%url($base_url)%url(/files/$hash)</guid>
+        <pubDate>%html($created_at)</pubDate>
+        <media:content url="%url($base_url)%url(/files/raw/$hash)" medium="image" type="%html($type)" />
+        <atom:link href="%url($base_url)%url(/files/$hash)" hreflang="de"/>
+      </item>
+    }
+  }
+  wapp-subst {</channel></rss>}
 }
 
 proc wapp-default {} {
@@ -400,27 +454,27 @@ proc wapp-default {} {
   }
 }
 
-proc get-file {file_id} {
+proc get-file {hash} {
   # Get file details and will only work if at least 1 tag is present:
   set row [db eval "
-    SELECT files.id, files.name, files.title, files.description, files.type, files.path, GROUP_CONCAT(tags.name,' ') AS tags
+    SELECT files.hash, files.name, files.title, files.description, files.type, files.extension, GROUP_CONCAT(tags.name,' ') AS tags
     FROM files
-    JOIN files_tags ON files.id = files_tags.file_id 
+    JOIN files_tags ON files.hash = files_tags.file_hash 
     JOIN tags ON tags.id = files_tags.tag_id
-    WHERE files.id == '$file_id'
-    GROUP BY files.id
-    ORDER BY files.id;
+    WHERE files.hash == '$hash'
+    GROUP BY files.hash
+    ORDER BY files.hash;
   "]
   return $row
 }
 
-proc update-raw-file {id content} {
-  global upload_path
+proc update-raw-file {hash content} {
+  # TODO: update as new file with new hash, copy all the things of predecessor!
   set hash [sha2::sha256 $content]
   set now [clock seconds]
   set updated_at [clock format $now -gmt 1 -format "%Y-%m-%dT%H:%M:%SZ"]
   set row [get-file $id]
-  lassign $row id name title description type path tags
+  lassign $row id name title description type extension tags
   set file [open $path "w"]
   fconfigure $file -translation binary
   puts -nonewline $file $content
@@ -431,17 +485,16 @@ proc update-raw-file {id content} {
 
 proc add-file {name type content} {
   global upload_path
-  set id [uuid::uuid generate]
   set hash [sha2::sha256 $content]
 
-  set exist [db eval "SELECT id FROM files WHERE hash == '$hash'"]
+  set exist [db eval "SELECT hash FROM files WHERE hash == '$hash'"]
   if {[string trim $exist] != ""} {
     wapp-trim {
       <p>File %html($name) already exists.</p>
     }
     return
   } else {
-    set file_path "$upload_path/$id"
+    set file_path "$upload_path/$hash"
     set extension [split $name .]
     if { [llength $extension ] > 0 } {
       set extension [lindex $extension end]
@@ -451,12 +504,12 @@ proc add-file {name type content} {
     fconfigure $file -translation binary
     puts -nonewline $file $content
     close $file
-    db eval "INSERT INTO files (id,name,type,hash,path) VALUES ('$id','$name','$type','$hash','$file_path')"
-    return $id
+    db eval "INSERT INTO files (hash,name,type,extension) VALUES ('$hash','$name','$type','$extension')"
+    return $hash
   }
 }
 
-proc add-tag {name file_id} {
+proc add-tag {name file_hash} {
   # check if tag with name already exists:
   set tag_id [db eval {SELECT id FROM tags WHERE name == :name}]
   if {$tag_id == ""} {
@@ -470,7 +523,7 @@ proc add-tag {name file_id} {
   # Insert but ignore if already exists:
   db eval "
     BEGIN TRANSACTION;
-    INSERT OR IGNORE INTO files_tags (file_id,tag_id) VALUES ('$file_id','$tag_id');
+    INSERT OR IGNORE INTO files_tags (file_hash,tag_id) VALUES ('$file_hash','$tag_id');
     COMMIT;
   "
   return $tag_id
@@ -484,6 +537,7 @@ proc header {} {
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta http-equiv="content-type" content="text/html; charset=UTF-8">
       <link href="%url([wapp-param SCRIPT_NAME]/style.css)" rel="stylesheet">
+      <link rel="alternate" type="application/rss+xml" title="doomtown cottbus" href="/rss"/>
       <title>doomtown</title>
     </head>
     <body>
@@ -510,6 +564,7 @@ proc header {} {
 proc footer {} {
   wapp-trim {
       <div class="footer">
+        <p><a href="/rss" target="rss">RSS</a></p>
         <p class="small"></p>
       </div>
     </div>
@@ -519,7 +574,8 @@ proc footer {} {
 }
 
 proc layout {content} {
-  wapp-content-security-policy {default-src 'self'; img-src 'self' data:}
+  wapp-content-security-policy off
+  # {default-src 'self'; img-src 'self' data:}
   header
   wapp-subst {<div class="content"><div class="wrap">}
   eval $content

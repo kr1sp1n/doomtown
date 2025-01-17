@@ -14,15 +14,15 @@ db1 eval $schema
 db2 eval $schema
 
 db1 eval "
-  INSERT INTO files (id,name, path, hash, type) VALUES ('1','image1','/image1.png', '123', 'png');
+  INSERT INTO files (hash,name, path, hash, type) VALUES ('1','image1','/image1.png', '123', 'png');
   INSERT INTO tags (id,name) VALUES ('1','image');
-  INSERT INTO files_tags (file_id,tag_id) VALUES ('1','1');
+  INSERT INTO files_tags (file_hash,tag_id) VALUES ('1','1');
 "
 
 db2 eval "
-  INSERT INTO files (id,name, path, hash, type) VALUES ('2','image2','/image2.png', '456', 'png');
+  INSERT INTO files (hash,name, path, hash, type) VALUES ('2','image2','/image2.png', '456', 'png');
   INSERT INTO tags (id,name) VALUES ('2','image');
-  INSERT INTO files_tags (file_id,tag_id) VALUES ('2','2');
+  INSERT INTO files_tags (file_hash,tag_id) VALUES ('2','2');
 "
 
 puts "TEST: merge $dbfile2 into $dbfile1"
